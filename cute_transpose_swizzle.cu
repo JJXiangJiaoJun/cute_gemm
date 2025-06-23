@@ -104,7 +104,31 @@ __global__ void TransposeDevice(Params<ProblemShape, ElementA, StrideA, ElementB
   Tensor tAgA = g2s_thr_copy.partition_S(gA);    ///< (CPY, CPY_M, CPY_N)
   Tensor tAsA = g2s_thr_copy.partition_D(sA);    ///< (CPY, CPY_M, CPY_N)
 
-  copy(g2s_tiled_copy, tAgA, tAsA);
+  /// we need predicated here
+  /// predicate for m, n
+  Tensor tApA = make_tensor<bool>(make_shape(size<1>(tAsA), size<2>(tAsA)));  ///
+
+  Tensor cA = make_identity_tensor(shape(gA));
+  Tensor tAcA = g2s_thr_copy.partition_S(cA);
+
+  auto TileM = size<0>(gA);
+  auto TileN = size<1>(gA);
+
+  auto M = size<0>(mA);
+  auto N = size<1>(mA);
+
+  CUTLASS_PRAGMA_UNROLL
+  for (int m = 0; m < size<0>(tApA); ++m) {
+    CUTLASS_PRAGMA_UNROLL
+    for (int n = 0; n < size<1>(tApA); ++n) {
+      tApA(m, n) = ((blockIdx.x * TileM + get<0>(tAcA(0, m, n))) < M) && ((blockIdx.y * TileN + get<1>(tAcA(0, m, n))) < N);
+    }
+  }
+
+  // copy(g2s_tiled_copy, tAgA, tAsA);
+  copy_if(g2s_tiled_copy, tApA, tAgA, tAsA);
+
+
   cp_async_fence();
   cp_async_wait<0>();
   __syncthreads();
@@ -128,7 +152,22 @@ __global__ void TransposeDevice(Params<ProblemShape, ElementA, StrideA, ElementB
     copy(tBrB(make_coord(iter, _), _, _), tBrB_tranpsosed(make_coord(_, iter), _, _));
   }
 
-  copy(r2g_tiled_copy, tBrB_tranpsosed, tBgB);
+  Tensor tBpB = make_tensor<bool>(make_shape(size<0, 1>(tBgB), size<1>(tBgB), size<2>(tBgB)));  ///
+  Tensor tBcB = r2g_thr_copy.partition_D(cA);  ///< (CPY, CPY_M, CPY_N)
+
+  CUTLASS_PRAGMA_UNROLL
+  for (int k = 0; k < size<0>(tBpB); ++k) {
+    CUTLASS_PRAGMA_UNROLL
+    for (int m = 0; m < size<1>(tBpB); ++m) {
+      CUTLASS_PRAGMA_UNROLL
+      for (int n = 0; n < size<2>(tBpB); ++n) {
+        tBpB(k, m, n) = ((blockIdx.x * TileM + get<0>(tBcB(make_coord(0, k), m, n))) < M) && ((blockIdx.y * TileN + get<1>(tBcB(make_coord(0, k), m, n))) < N);
+      }
+    }
+  }
+
+  // copy(r2g_tiled_copy, tBrB_tranpsosed, tBgB);
+  copy_if(r2g_tiled_copy, tBpB, tBrB_tranpsosed, tBgB);
 
 }
 
@@ -268,7 +307,7 @@ float LaunchTransposeKernel(const ElementA *A, ElementB * B, int m, int n, int l
 
 using HostKernel = reference::Transpose<ElementA, ElementB>;
 
-void host_gemm(const ElementA *ptr_A, ElementB *ptr_B, int m, int n, int lda, int ldb) {
+void host_transpose(const ElementA *ptr_A, ElementB *ptr_B, int m, int n, int lda, int ldb) {
   HostKernel host_op;
   host_op(ptr_A, ptr_B, m, n, lda, ldb);
 }
@@ -297,7 +336,7 @@ int main() {
 
   float kernel_execute_time = 0;
 
-  kernel_execute_time = LaunchTransposeKernel<ElementA, ElementB>(d_A, d_B, M, N, N, M, 1);
+  kernel_execute_time = LaunchTransposeKernel<ElementA, ElementB>(d_A, d_B, M, N, N, M, 50);
 
   printf("Trasnpose kernel elapsed time: %.4f us\n", kernel_execute_time * 1000);
 
@@ -308,7 +347,7 @@ int main() {
   cudaDeviceSynchronize();
 
 #ifdef HOST_CHECK
-  host_gemm(h_A, h_B, M, N, N, M);
+  host_transpose(h_A, h_B, M, N, N, M);
 
   for (int i = 0; i < M * N; i++) {
     float abs_err = fabs(float(h_B[i]) - float(result_B[i]));
