@@ -175,9 +175,9 @@ using ElementA = cute::half_t;
 using ElementB = cute::half_t;
 
 static const int kAlignment = 128 / cutlass::sizeof_bits<ElementA>::value;
-using ThreadBlockShape = cutlass::MatrixShape<64, 64>;
+using ThreadBlockShape = cutlass::MatrixShape<64, 128>;
 
-static const int kSharedLoadAlignment = kAlignment / 2;
+static const int kSharedLoadAlignment = kAlignment;
 
 using G2SAccessType = cutlass::Array<ElementA, kAlignment>;
 using SharedLoadAccessType = cutlass::Array<ElementA, kSharedLoadAlignment>;
@@ -212,19 +212,25 @@ float LaunchTransposeKernel(const ElementA *A, ElementB * B, int m, int n, int l
 
   TiledCopy S2RTiledCopy = make_tiled_copy(Copy_Atom<UniversalCopy<SharedLoadAccessType>, ElementA>{},
                                                      Layout<Shape<_8,_16>, Stride<_1,_8>>{},
-                                                     Layout<Shape<_8, Int<kSharedLoadAlignment>>, Stride<Int<kSharedLoadAlignment>, _1>>{});
+                                                     Layout<Shape<Int<kAlignment>, Int<kSharedLoadAlignment>>, Stride<Int<kSharedLoadAlignment>, _1>>{});
 
   TiledCopy R2GTiledCopy = make_tiled_copy(Copy_Atom<UniversalCopy<GlobalWriteAccessType>, ElementA>{},
                                                      Layout<Shape<_8, _16>, Stride<_1,_8>>{},
                                                      Layout<Shape<Int<kAlignment>, Int<kSharedLoadAlignment>>>{});
 
   auto swizzle_atom = composition(
-      Swizzle<3, 3, 6>{},
-      Layout<Shape<_8, Shape<_8, _8>>, Stride<_64, Stride<_1, _8>>>{});
+      Swizzle<3, 3, 7>{},
+      Layout<Shape<_8, Shape<_8, _16>>, Stride<_128, Stride<_1, _8>>>{});
 
   auto g2s_A = make_layout(make_shape(bM, bN), make_stride(bN, _1{}));
   // auto g2s_A_swizzle = raked_product(swizzle_atom, Layout<_8, _1>{});
   auto g2s_A_swizzle = tile_to_shape(swizzle_atom, make_shape(bM, bN));
+
+#if 0
+
+print_layout(g2s_A_swizzle);
+
+#endif
 
   ///< shared->global shared-memory view
   auto s2g_B = make_layout(make_shape(bM, bN), make_stride(bN, _1{}));
@@ -337,7 +343,7 @@ int main() {
 
   float kernel_execute_time = 0;
 
-  kernel_execute_time = LaunchTransposeKernel<ElementA, ElementB>(d_A, d_B, M, N, N, M, 50);
+  kernel_execute_time = LaunchTransposeKernel<ElementA, ElementB>(d_A, d_B, M, N, N, M, 10);
 
   printf("Trasnpose kernel elapsed time: %.4f us\n", kernel_execute_time * 1000);
 
