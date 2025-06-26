@@ -207,28 +207,29 @@ float LaunchTransposeKernel(const ElementA *A, ElementB * B, int m, int n, int l
   auto cta_tiler = make_shape(bM, bN);
 
   TiledCopy G2STiledCopy = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<G2SAccessType>, ElementA>{},
-                                                     Layout<Shape<_16,_8>,Stride<_8,_1>>{},
+                                                     Layout<Shape<_16,_8>, Stride<_8,_1>>{},
                                                      Layout<Shape< _1, Int<kAlignment>>>{});
 
   TiledCopy S2RTiledCopy = make_tiled_copy(Copy_Atom<UniversalCopy<SharedLoadAccessType>, ElementA>{},
-                                                     Layout<Shape<_8,_16>,Stride<_1,_8>>{},
-                                                     Layout<Shape<_1,Int<kSharedLoadAlignment>>>{});
+                                                     Layout<Shape<_8,_16>, Stride<_1,_8>>{},
+                                                     Layout<Shape<_8, Int<kSharedLoadAlignment>>, Stride<Int<kSharedLoadAlignment>, _1>>{});
 
   TiledCopy R2GTiledCopy = make_tiled_copy(Copy_Atom<UniversalCopy<GlobalWriteAccessType>, ElementA>{},
-                                                     Layout<Shape<_8, _16>,Stride<_1,_8>>{},
+                                                     Layout<Shape<_8, _16>, Stride<_1,_8>>{},
                                                      Layout<Shape<Int<kAlignment>, Int<kSharedLoadAlignment>>>{});
 
   auto swizzle_atom = composition(
-      Swizzle<3, 3, 3>{},
+      Swizzle<3, 3, 6>{},
       Layout<Shape<_8, Shape<_8, _8>>, Stride<_64, Stride<_1, _8>>>{});
 
-  auto g2s_A = make_layout(make_shape(make_shape(_8{}, _8{}), _64{}), make_stride(make_stride(_512{}, _64{}), _1{}));
-  auto g2s_A_swizzle = raked_product(swizzle_atom, Layout<_8, _1>{});
+  auto g2s_A = make_layout(make_shape(bM, bN), make_stride(bN, _1{}));
+  // auto g2s_A_swizzle = raked_product(swizzle_atom, Layout<_8, _1>{});
+  auto g2s_A_swizzle = tile_to_shape(swizzle_atom, make_shape(bM, bN));
 
   ///< shared->global shared-memory view
   auto s2g_B = make_layout(make_shape(bM, bN), make_stride(bN, _1{}));
+  // auto s2g_B_swizzle = tile_to_shape(swizzle_atom, make_shape(bM,bN));
   auto s2g_B_swizzle = tile_to_shape(swizzle_atom, make_shape(bM,bN));
-
 
   int smem_size = int(sizeof(SharedStorage<cute::half_t, decltype(g2s_A)>));
 
