@@ -179,8 +179,8 @@ using ThreadBlockShape = cutlass::MatrixShape<64, 128>;
 
 static const int kSharedLoadAlignment = kAlignment;
 
-using G2SAccessType = cutlass::Array<ElementA, kAlignment>;
-using SharedLoadAccessType = cutlass::Array<ElementA, kSharedLoadAlignment>;
+using G2SAccessType = cute::uint_bit_t<kAlignment * cutlass::sizeof_bits<ElementA>::value>;
+using SharedLoadAccessType = cute::uint_bit_t<kSharedLoadAlignment * cutlass::sizeof_bits<ElementA>::value>;
 using GlobalWriteAccessType = G2SAccessType;
 
 template<
@@ -227,8 +227,10 @@ float LaunchTransposeKernel(const ElementA *A, ElementB * B, int m, int n, int l
   auto g2s_A_swizzle = tile_to_shape(swizzle_atom, make_shape(bM, bN));
 
 #if 0
-
-print_layout(g2s_A_swizzle);
+  print("\n");
+  print_layout(g2s_A_swizzle);
+  print("\n");
+// print_layout(g2s_A_swizzle);
 
 #endif
 
@@ -346,8 +348,6 @@ int main() {
   kernel_execute_time = LaunchTransposeKernel<ElementA, ElementB>(d_A, d_B, M, N, N, M, 10);
 
   printf("Trasnpose kernel elapsed time: %.4f us\n", kernel_execute_time * 1000);
-
-  // for (int i = 0; i < 20; i++)
 
   cudaMemcpy(result_B, d_B, M * N * sizeof(ElementB), cudaMemcpyDeviceToHost);
 
