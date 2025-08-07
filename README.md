@@ -2,8 +2,8 @@
 
 # Environment
 
-CUDA 11.4
-CUTLASS v4.0.0
+- CUDA 11.4
+- CUTLASS v4.0.0
 
 # Quick Start
 
@@ -16,7 +16,7 @@ cd cutlass && git checkout v4.0.0 && cd ..
 
 ## cute_transpose_swizzle
 ```shell
-nvcc --std=c++17 -arch=sm_86 --expt-relaxed-constexpr -O2 -I ./ -I ./cutlass/include -DHOST_CHECK cute_transpose_swizzle.cu.cu -o cute_transpose_swizzle
+nvcc --std=c++17 -arch=sm_86 --expt-relaxed-constexpr -O2 -I ./ -I ./cutlass/include -DHOST_CHECK cute_transpose_swizzle.cu -o cute_transpose_swizzle
 
 ```
 
